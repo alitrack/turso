@@ -4143,6 +4143,7 @@ pub fn is_catalog_table_name(name: &str) -> bool {
             | "pg_sequences"
             | "pg_constraint"
             | "pg_index"
+            | "pg_statistic_ext"
             | "pg_inherits"
             | "pg_rewrite"
             | "pg_foreign_table"

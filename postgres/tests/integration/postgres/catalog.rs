@@ -2,6 +2,41 @@ use crate::common::TempDatabase;
 use turso_core::{Numeric, StepResult, Value};
 
 #[turso_macros::test(mvcc)]
+fn test_empty_physical_catalogs_have_hidden_tableoid(db: TempDatabase) {
+    let conn = db.connect_postgres();
+    conn.execute("SELECT set_config('search_path', '', false)")
+        .unwrap();
+    for (table, columns) in [
+        ("pg_collation", 12),
+        ("pg_policy", 8),
+        ("pg_trigger", 18),
+        ("pg_statistic_ext", 9),
+        ("pg_inherits", 4),
+        ("pg_rewrite", 8),
+        ("pg_foreign_table", 3),
+        ("pg_partitioned_table", 8),
+        ("pg_description", 4),
+        ("pg_publication", 9),
+        ("pg_publication_namespace", 3),
+        ("pg_publication_rel", 5),
+    ] {
+        let mut stmt = conn
+            .prepare(format!("SELECT tableoid FROM {table}"))
+            .unwrap();
+        assert!(stmt.run_collect_rows().unwrap().is_empty(), "{table}");
+        assert_eq!(
+            conn.prepare(format!("SELECT * FROM {table}"))
+                .unwrap()
+                .num_columns(),
+            columns,
+            "{table}"
+        );
+    }
+    assert!(conn.prepare("SELECT tableoid, oid, collname, collnamespace, collowner, collencoding FROM pg_collation")
+        .unwrap().run_collect_rows().unwrap().is_empty());
+}
+
+#[turso_macros::test(mvcc)]
 fn test_pg_language_describes_native_function_languages(db: TempDatabase) {
     let conn = db.connect_postgres();
     conn.execute("SELECT set_config('search_path', '', false)")
