@@ -4241,6 +4241,7 @@ pub fn is_catalog_table_name(name: &str) -> bool {
             | "pg_largeobject_metadata"
             | "pg_amop"
             | "pg_amproc"
+            | "pg_seclabels"
             | "pg_tables"
     )
 }

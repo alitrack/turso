@@ -174,6 +174,30 @@ fn test_pg_dump_publication_membership_query(db: TempDatabase) {
 }
 
 #[turso_macros::test(mvcc)]
+fn test_pg_security_labels_are_empty_and_cannot_be_created(db: TempDatabase) {
+    let conn = db.connect_postgres();
+    conn.execute("CREATE TABLE label_probe (id INTEGER)")
+        .unwrap();
+    assert!(conn
+        .execute("SECURITY LABEL FOR probe ON TABLE label_probe IS 'private'")
+        .is_err());
+    conn.execute("SELECT set_config('search_path', '', false)")
+        .unwrap();
+    for query in [
+        "SELECT label, provider, classoid, objoid, objsubid FROM pg_catalog.pg_seclabels ORDER BY classoid, objoid, objsubid",
+        "SELECT objoid, classoid, objsubid, objtype, objnamespace, objname, provider, label FROM pg_seclabels",
+    ] {
+        assert!(conn.prepare(query).unwrap().run_collect_rows().unwrap().is_empty());
+    }
+    assert_eq!(
+        conn.prepare("SELECT * FROM pg_catalog.pg_seclabels")
+            .unwrap()
+            .num_columns(),
+        8
+    );
+}
+
+#[turso_macros::test(mvcc)]
 fn test_pg_language_describes_native_function_languages(db: TempDatabase) {
     let conn = db.connect_postgres();
     conn.execute("SELECT set_config('search_path', '', false)")

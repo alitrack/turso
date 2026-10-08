@@ -2215,6 +2215,13 @@ pub(crate) fn register_catalog_modules(mut options: OpenOptions) -> OpenOptions 
             amprocnum INTEGER, amproc INTEGER, tableoid INTEGER HIDDEN
         )",
         ),
+        (
+            "pg_seclabels",
+            "CREATE TABLE pg_seclabels (
+            objoid INTEGER, classoid INTEGER, objsubid INTEGER, objtype TEXT,
+            objnamespace INTEGER, objname TEXT, provider TEXT, label TEXT
+        )",
+        ),
     ] {
         options = options.native_module(
             name,
