@@ -76,6 +76,7 @@ scalar_functions! {
     Version(FunctionArity::Exact(0), true),
     CurrentDatabase(FunctionArity::Exact(0), false),
     CurrentSchema(FunctionArity::Exact(0), true),
+    CurrentSchemas(FunctionArity::Exact(1), false),
     PgBackendPid(FunctionArity::Exact(0), true),
     PgIsInRecovery(FunctionArity::Exact(0), false),
     PgLockAccessShare(FunctionArity::Exact(0), false),
@@ -126,6 +127,7 @@ impl ScalarCall for PgScalarFunction {
                 Value::build_text(crate::catalog::db_name_from_path(connection.db_file_path()))
             }
             Self::CurrentSchema => Value::build_text("public"),
+            Self::CurrentSchemas => exec_current_schemas(connection, args)?,
             Self::PgBackendPid => Value::from_i64(std::process::id() as i64),
             Self::PgIsInRecovery => {
                 // Temporary pg_dump compatibility: "t" means true, not actual recovery state.
@@ -150,6 +152,40 @@ impl ScalarCall for PgScalarFunction {
         };
         Ok(IOResult::Done(value))
     }
+}
+
+fn exec_current_schemas(connection: &Connection, args: &[Register]) -> Result<Value> {
+    let include_implicit = match args[0].get_value().as_int() {
+        Some(0) => false,
+        Some(1) => true,
+        None if matches!(args[0].get_value(), Value::Null) => return Ok(Value::Null),
+        _ => {
+            return Err(LimboError::InvalidArgument(
+                "current_schemas requires a boolean".to_string(),
+            ));
+        }
+    };
+    let schemas = crate::session::current_schemas(connection, include_implicit)?;
+    Ok(Value::build_text(pg_array_text(&schemas)))
+}
+
+fn pg_array_text(values: &[String]) -> String {
+    let values = values
+        .iter()
+        .map(|value| {
+            let must_quote = value.is_empty()
+                || value.eq_ignore_ascii_case("null")
+                || value
+                    .chars()
+                    .any(|c| c.is_ascii_whitespace() || matches!(c, '{' | '}' | ',' | '"' | '\\'));
+            if must_quote {
+                format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
+            } else {
+                value.clone()
+            }
+        })
+        .collect::<Vec<_>>();
+    format!("{{{}}}", values.join(","))
 }
 
 fn exec_pg_array_upper(args: &[Register]) -> Result<Value> {

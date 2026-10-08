@@ -643,6 +643,46 @@ fn test_pg_set_config_empty_and_quoted_search_paths(db: TempDatabase) {
 }
 
 #[turso_macros::test(mvcc)]
+fn test_pg_current_schemas_uses_existing_search_path_entries(db: TempDatabase) {
+    let conn = db.connect_postgres();
+    assert_eq!(
+        query_text(&conn, "SELECT current_schemas(false)"),
+        ["{public}"]
+    );
+    assert_eq!(
+        query_text(&conn, "SELECT current_schemas(true)"),
+        ["{pg_catalog,public}"]
+    );
+
+    conn.execute("CREATE SCHEMA turso").unwrap();
+    assert_eq!(
+        query_text(&conn, "SELECT current_schemas(false)"),
+        ["{public}"]
+    );
+    conn.execute("CREATE SCHEMA alpha").unwrap();
+    conn.execute("CREATE SCHEMA \"comma,schema\"").unwrap();
+    conn.execute("SELECT set_config('search_path', 'missing, alpha, public, alpha, \"comma,schema\", pg_catalog', false)")
+        .unwrap();
+    assert_eq!(
+        query_text(&conn, "SELECT current_schemas(false)"),
+        ["{alpha,public,\"comma,schema\",pg_catalog}"]
+    );
+    assert_eq!(
+        query_text(&conn, "SELECT current_schemas(true)"),
+        ["{alpha,public,\"comma,schema\",pg_catalog}"]
+    );
+
+    conn.execute("SELECT set_config('search_path', '', false)")
+        .unwrap();
+    assert_eq!(query_text(&conn, "SELECT current_schemas(false)"), ["{}"]);
+    assert_eq!(
+        query_text(&conn, "SELECT current_schemas(true)"),
+        ["{pg_catalog}"]
+    );
+    assert_eq!(query_text(&conn, "SELECT current_schemas(NULL)"), ["NULL"]);
+}
+
+#[turso_macros::test(mvcc)]
 fn test_pg_set_config_changes_settings_only_when_executed(db: TempDatabase) {
     let conn = db.connect_postgres();
     conn.execute("CREATE TABLE config_items (v INT)").unwrap();
