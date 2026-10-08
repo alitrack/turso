@@ -2,6 +2,52 @@ use crate::common::TempDatabase;
 use turso_core::{Numeric, StepResult, Value};
 use turso_pg::PgConnection;
 
+#[test]
+fn test_pg_function_column_alias_view_survives_reopen() {
+    for mvcc in [false, true] {
+        let db = TempDatabase::builder()
+            .with_views(true)
+            .with_mvcc(mvcc)
+            .build();
+        let conn = db.connect_postgres();
+        conn.execute(
+            "CREATE VIEW public.dump_values AS
+            SELECT v.value FROM pg_catalog.unnest(ARRAY[9,2]) AS v(value)",
+        )
+        .unwrap();
+        let expected = vec![vec![Value::from_i64(9)], vec![Value::from_i64(2)]];
+        assert_eq!(
+            conn.prepare("SELECT * FROM public.dump_values")
+                .unwrap()
+                .run_collect_rows()
+                .unwrap(),
+            expected
+        );
+        let path = db.path.clone();
+        let io = db.io.clone();
+        conn.close().unwrap();
+        drop(conn);
+        drop(db);
+        let reopened = turso_pg::open_database_with_io(
+            io,
+            path.to_str().unwrap(),
+            turso_core::OpenFlags::default(),
+            turso_core::DatabaseOpts::new()
+                .with_views(true)
+                .with_custom_types(true),
+        )
+        .unwrap();
+        let conn = PgConnection::connect(&reopened).unwrap();
+        assert_eq!(
+            conn.prepare("SELECT * FROM public.dump_values")
+                .unwrap()
+                .run_collect_rows()
+                .unwrap(),
+            expected
+        );
+    }
+}
+
 #[turso_macros::test(mvcc)]
 fn test_pg_array_casts_preserve_elements(db: TempDatabase) {
     let conn = db.connect_postgres();
