@@ -2064,6 +2064,7 @@ pub(crate) fn register_catalog_modules(mut options: OpenOptions) -> OpenOptions 
         VTabKind::TableValuedFunction,
         PgOptionsToTable,
     );
+    options = options.native_module("unnest", VTabKind::TableValuedFunction, PgUnnest);
     for (name, create_sql) in [
         (
             "pg_operator",
@@ -2203,6 +2204,105 @@ pub(crate) fn register_catalog_modules(mut options: OpenOptions) -> OpenOptions 
         );
     }
     options
+}
+
+#[derive(Debug)]
+struct PgUnnest;
+
+impl VirtualTableModule for PgUnnest {
+    type Table = Self;
+
+    fn schema(&self, _args: &[Value]) -> Result<String> {
+        Ok("CREATE TABLE unnest (unnest, input BLOB HIDDEN)".to_owned())
+    }
+
+    fn create(&self, _args: &[Value]) -> Result<Self> {
+        Ok(Self)
+    }
+
+    fn innocuous(&self) -> bool {
+        true
+    }
+}
+
+impl VirtualTable for PgUnnest {
+    type Cursor = PgUnnestCursor;
+
+    fn open(&self, _conn: Arc<Connection>) -> Result<Self::Cursor> {
+        Ok(PgUnnestCursor {
+            values: vec![],
+            input: Value::Null,
+            index: 0,
+        })
+    }
+
+    fn best_index(
+        &self,
+        constraints: &[ConstraintInfo],
+        _order_by: &[OrderByInfo],
+    ) -> Result<IndexInfo, ResultCode> {
+        use turso_ext::{ConstraintOp, ConstraintUsage};
+        let input = constraints
+            .iter()
+            .position(|c| c.column_index == 1 && c.op == ConstraintOp::Eq);
+        let Some(input) = input else {
+            return Err(ResultCode::InvalidArgs);
+        };
+        if !constraints[input].usable {
+            return Err(ResultCode::ConstraintViolation);
+        }
+        Ok(IndexInfo {
+            constraint_usages: constraints
+                .iter()
+                .enumerate()
+                .map(|(i, _)| ConstraintUsage {
+                    argv_index: (i == input).then_some(1),
+                    omit: i == input,
+                })
+                .collect(),
+            estimated_cost: 1.0,
+            estimated_rows: 10,
+            ..Default::default()
+        })
+    }
+}
+
+struct PgUnnestCursor {
+    values: Vec<Value>,
+    input: Value,
+    index: usize,
+}
+
+impl VirtualTableCursor for PgUnnestCursor {
+    fn filter(
+        &mut self,
+        args: &[Value],
+        _idx_str: Option<&str>,
+        _idx_num: i32,
+    ) -> turso_core::types::IOResultOr<bool> {
+        self.index = 0;
+        self.input = args[0].clone();
+        self.values = turso_core::array_values_from_any(&self.input)
+            .ok_or_else(|| LimboError::InvalidArgument("unnest requires an array".to_owned()))?;
+        Ok(IOResult::Done(!self.values.is_empty()))
+    }
+
+    fn next(&mut self) -> turso_core::types::IOResultOr<bool> {
+        self.index += 1;
+        Ok(IOResult::Done(self.index < self.values.len()))
+    }
+
+    fn column(&mut self, column: usize) -> turso_core::types::IOResultOr<Value> {
+        Ok(IOResult::Done(if column == 1 {
+            self.input.clone()
+        } else {
+            self.values[self.index].clone()
+        }))
+    }
+
+    fn rowid(&self) -> i64 {
+        self.index as i64
+    }
 }
 
 #[derive(Debug)]

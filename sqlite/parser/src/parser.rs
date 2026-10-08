@@ -2928,7 +2928,12 @@ impl<'a> Parser<'a> {
                                 let on_using = self.parse_on_using()?;
                                 result.push(JoinedSelectTable {
                                     operator: op,
-                                    table: Box::new(SelectTable::TableCall(name, exprs, alias)),
+                                    table: Box::new(SelectTable::TableCall(
+                                        name,
+                                        exprs,
+                                        alias,
+                                        vec![],
+                                    )),
                                     constraint: on_using,
                                 });
                             }
@@ -3005,7 +3010,12 @@ impl<'a> Parser<'a> {
                             eat_expect!(self, TK_RP);
                             let alias = self.parse_as()?;
                             Ok(FromClause {
-                                select: Box::new(SelectTable::TableCall(name, exprs, alias)),
+                                select: Box::new(SelectTable::TableCall(
+                                    name,
+                                    exprs,
+                                    alias,
+                                    vec![],
+                                )),
                                 joins: self.parse_joined_tables()?,
                             })
                         }
@@ -9472,6 +9482,7 @@ mod tests {
                                         Box::new(Expr::Literal(Literal::Numeric("2".to_owned()))),
                                     ],
                                     None,
+                                    vec![],
                                 )),
                                 joins: vec![]
                             }),
@@ -10205,6 +10216,7 @@ mod tests {
                                                 Box::new(Expr::Literal(Literal::Numeric("2".to_owned()))),
                                             ],
                                             None,
+                                            vec![],
                                         )),
                                         constraint: None,
                                     }
