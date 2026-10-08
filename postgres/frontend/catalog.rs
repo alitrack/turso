@@ -1956,7 +1956,17 @@ pub(crate) fn register_catalog_modules(mut options: OpenOptions) -> OpenOptions 
     options = options.native_module(
         "pg_trigger",
         VTabKind::TableValuedFunction,
-        EmptyPgCatalogTable { create_sql: "CREATE TABLE pg_trigger (oid INTEGER, tgrelid INTEGER, tgname TEXT, tgfoid INTEGER, tgtype INTEGER, tgenabled TEXT, tgisinternal INTEGER, tgconstrrelid INTEGER, tgconstrindid INTEGER, tgconstraint INTEGER, tgdeferrable INTEGER, tginitdeferred INTEGER, tgnargs INTEGER, tgattr TEXT, tgargs TEXT, tgqual TEXT, tgoldtable TEXT, tgnewtable TEXT, tableoid INTEGER HIDDEN)".to_string() },
+        EmptyPgCatalogTable {
+            create_sql: "CREATE TABLE pg_trigger (
+                oid INTEGER, tgrelid INTEGER, tgparentid INTEGER NOT NULL DEFAULT 0,
+                tgname TEXT, tgfoid INTEGER, tgtype INTEGER, tgenabled TEXT,
+                tgisinternal INTEGER, tgconstrrelid INTEGER, tgconstrindid INTEGER,
+                tgconstraint INTEGER, tgdeferrable INTEGER, tginitdeferred INTEGER,
+                tgnargs INTEGER, tgattr TEXT, tgargs TEXT, tgqual TEXT, tgoldtable TEXT,
+                tgnewtable TEXT, tableoid INTEGER HIDDEN
+            )"
+            .to_string(),
+        },
     );
     options = options.native_module(
         "pg_statistic_ext",

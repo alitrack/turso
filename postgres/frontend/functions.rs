@@ -64,6 +64,7 @@ scalar_functions! {
     FormatType(FunctionArity::OneOf(&[1, 2]), true),
     PgGetConstraintdef(FunctionArity::OneOf(&[1, 2]), false),
     PgGetIndexdef(FunctionArity::OneOf(&[1, 2]), false),
+    PgGetTriggerdef(FunctionArity::OneOf(&[1, 2]), false),
     ObjDescription(FunctionArity::OneOf(&[1, 2]), true),
     PgGetExpr(FunctionArity::OneOf(&[2, 3]), true),
     ToChar(FunctionArity::Exact(2), true),
@@ -103,6 +104,7 @@ impl ScalarCall for PgScalarFunction {
             | Self::PgGetStatisticsobjdefColumns
             | Self::PgRelationIsPublishable
             | Self::ObjDescription
+            | Self::PgGetTriggerdef
             | Self::ColDescription => Value::Null,
             Self::QuoteIdent => match args[0].get_value() {
                 Value::Null => Value::Null,
