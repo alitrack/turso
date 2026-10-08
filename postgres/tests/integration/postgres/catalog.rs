@@ -1064,6 +1064,37 @@ fn test_pg_type_array_types(db: TempDatabase) {
         }
         _ => panic!("_text not found in pg_type"),
     }
+    conn.execute("CREATE TABLE dump_arrays (id INTEGER PRIMARY KEY, vals INTEGER[])")
+        .unwrap();
+    assert_eq!(
+        conn.prepare(
+            "SELECT a.attname,a.atttypid,a.attndims,a.attlen,a.attbyval,
+            pg_catalog.format_type(a.atttypid,a.atttypmod)
+            FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid
+            WHERE c.relname='dump_arrays' ORDER BY a.attnum"
+        )
+        .unwrap()
+        .run_collect_rows()
+        .unwrap(),
+        vec![
+            vec![
+                Value::build_text("id"),
+                Value::from_i64(23),
+                Value::from_i64(0),
+                Value::from_i64(4),
+                Value::from_i64(1),
+                Value::build_text("integer")
+            ],
+            vec![
+                Value::build_text("vals"),
+                Value::from_i64(1007),
+                Value::from_i64(1),
+                Value::from_i64(-1),
+                Value::from_i64(0),
+                Value::build_text("integer[]")
+            ],
+        ]
+    );
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -1936,6 +1967,7 @@ fn test_dump_view_and_persisted_sequence_queries(db: TempDatabase) {
         let Value::Text(sql) = &definition[0][0] else {
             panic!("expected view SQL")
         };
+        assert!(sql.as_str().ends_with(';'), "{sql}");
         assert_eq!(
             conn.prepare(sql.as_str())
                 .unwrap()

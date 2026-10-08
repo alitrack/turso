@@ -470,6 +470,8 @@ impl SnapshotRows for PgAttributeTable {
                     .iter()
                     .find(|t| t.oid == type_oid)
                     .expect("column type OIDs refer to PostgreSQL base types");
+                let array = col.array_dimensions() > 0;
+                let type_oid = if array { type_info.typarray } else { type_oid };
                 let attnum = (i + 1) as i64; // 1-based
                 let primary_key = match &relation.kind {
                     CatalogRelationKind::Table(table) => table
@@ -486,14 +488,14 @@ impl SnapshotRows for PgAttributeTable {
                     Value::Text(col_name.into()), // attname
                     Value::from_i64(type_oid),    // atttypid
                     Value::from_i64(-1),          // attstattarget
-                    Value::from_i64(type_info.typlen),
-                    Value::from_i64(attnum), // attnum
-                    Value::from_i64(0),      // attndims
-                    Value::from_i64(-1),     // attcacheoff
-                    Value::from_i64(-1),     // atttypmod
-                    Value::from_i64(i64::from(type_info.typbyval)),
-                    Value::build_text(type_info.typstorage),
-                    Value::build_text(type_info.typalign),
+                    Value::from_i64(if array { -1 } else { type_info.typlen }),
+                    Value::from_i64(attnum),                        // attnum
+                    Value::from_i64(col.array_dimensions() as i64), // attndims
+                    Value::from_i64(-1),                            // attcacheoff
+                    Value::from_i64(-1),                            // atttypmod
+                    Value::from_i64(i64::from(!array && type_info.typbyval)),
+                    Value::build_text(if array { "x" } else { type_info.typstorage }),
+                    Value::build_text(if array { "i" } else { type_info.typalign }),
                     Value::from_i64(notnull), // attnotnull
                     Value::from_i64(has_def), // atthasdef
                     Value::from_i64(0),       // atthasmissing
@@ -3517,7 +3519,7 @@ pub(crate) fn pg_get_viewdef(conn: &Connection, target_oid: i64) -> Result<Optio
         return Ok(None);
     };
     let (select, _) = qualified_view_select(relation, &relations)?;
-    Ok(Some(select.to_string()))
+    Ok(Some(format!("{select};")))
 }
 
 fn qualified_view_select(
