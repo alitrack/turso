@@ -156,6 +156,24 @@ fn test_pg_trigger_supports_pg_dump_parent_trigger_query(db: TempDatabase) {
 }
 
 #[turso_macros::test(mvcc)]
+fn test_pg_dump_publication_membership_query(db: TempDatabase) {
+    let conn = db.connect_postgres();
+    conn.execute("SELECT set_config('search_path', '', false)")
+        .unwrap();
+    assert!(conn.prepare(
+        "SELECT tableoid, oid, prpubid, prrelid,
+                pg_catalog.pg_get_expr(prqual, prrelid) AS prrelqual,
+                (CASE WHEN pr.prattrs IS NOT NULL THEN
+                    (SELECT array_agg(attname)
+                     FROM pg_catalog.generate_series(0, pg_catalog.array_upper(pr.prattrs::pg_catalog.int2[], 1)) s,
+                          pg_catalog.pg_attribute
+                     WHERE attrelid = pr.prrelid AND attnum = prattrs[s])
+                 ELSE NULL END) prattrs
+         FROM pg_catalog.pg_publication_rel pr"
+    ).unwrap().run_collect_rows().unwrap().is_empty());
+}
+
+#[turso_macros::test(mvcc)]
 fn test_pg_language_describes_native_function_languages(db: TempDatabase) {
     let conn = db.connect_postgres();
     conn.execute("SELECT set_config('search_path', '', false)")

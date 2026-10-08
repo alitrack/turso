@@ -79,6 +79,7 @@ scalar_functions! {
     PgBackendPid(FunctionArity::Exact(0), true),
     PgIsInRecovery(FunctionArity::Exact(0), false),
     PgLockAccessShare(FunctionArity::Exact(0), false),
+    PgArrayUpper(FunctionArity::Exact(2), true),
     Now | ClockTimestamp | TransactionTimestamp | StatementTimestamp(FunctionArity::Variadic, false),
 }
 
@@ -139,6 +140,7 @@ impl ScalarCall for PgScalarFunction {
                 }
                 Value::from_i64(0)
             }
+            Self::PgArrayUpper => exec_pg_array_upper(args)?,
             Self::Now
             | Self::ClockTimestamp
             | Self::TransactionTimestamp
@@ -147,6 +149,30 @@ impl ScalarCall for PgScalarFunction {
             }
         };
         Ok(IOResult::Done(value))
+    }
+}
+
+fn exec_pg_array_upper(args: &[Register]) -> Result<Value> {
+    if args
+        .iter()
+        .any(|arg| matches!(arg.get_value(), Value::Null))
+    {
+        return Ok(Value::Null);
+    }
+    let dimension = args[1].get_value().as_int().ok_or_else(|| {
+        LimboError::InvalidArgument("array_upper requires an integer dimension".to_owned())
+    })?;
+    let values = turso_core::array_values_from_any(args[0].get_value())
+        .ok_or_else(|| LimboError::InvalidArgument("array_upper requires an array".to_owned()))?;
+    if values.iter().any(|value| matches!(value, Value::Blob(_))) {
+        return Err(LimboError::InvalidArgument(
+            "array_upper supports one-dimensional arrays only".to_owned(),
+        ));
+    }
+    if values.is_empty() || dimension != 1 {
+        Ok(Value::Null)
+    } else {
+        Ok(Value::from_i64(values.len() as i64))
     }
 }
 
