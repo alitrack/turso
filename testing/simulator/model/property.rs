@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
 use sql_generation::model::query::{Create, Insert, Select, predicate::Predicate, update::Update};
 
-use crate::model::{CreateSequence, DropSequence, Query, QueryDiscriminants};
+use crate::model::{
+    CreateSequence, DropSequence, Query, QueryDiscriminants, lateral::LateralSelect,
+};
 
 /// Properties are representations of executable specifications
 /// about the database behavior.
@@ -184,6 +186,22 @@ pub enum Property {
         select: Select,
         where_clause: Predicate,
     },
+    /// Lateral-Matches-Json-Each is a property that tests LATERAL joins. A LATERAL
+    /// subquery gives the same rows as `json_each` over a correlated subquery that
+    /// collects these rows into one JSON array with `json_group_array`. The second
+    /// query writes one or more of the LATERAL joins of the first query in this form,
+    /// and the two queries must return the same rows:
+    /// ```sql
+    ///     SELECT o.a, s0.c0 FROM t1 AS o
+    ///     LEFT JOIN LATERAL (SELECT i0.x AS c0 FROM t2 AS i0 WHERE i0.y < o.a) AS s0 ON TRUE
+    ///
+    ///     SELECT o.a, s0.value FROM t1 AS o
+    ///     LEFT JOIN json_each((SELECT json_group_array(i0.x) FROM t2 AS i0 WHERE i0.y < o.a)) AS s0 ON TRUE
+    /// ```
+    LateralMatchesJsonEach {
+        select: LateralSelect,
+        json_each_joins: Vec<usize>,
+    },
     /// FsyncNoWait tests recovery when a query is interrupted at fsync.
     ///
     /// # Interactions
@@ -268,6 +286,7 @@ impl Property {
             | Property::SelectSelectOptimizer { .. }
             | Property::WhereTrueFalseNull { .. }
             | Property::UnionAllPreservesCardinality { .. }
+            | Property::LateralMatchesJsonEach { .. }
             | Property::ReadYourUpdatesBack { .. }
             | Property::TableHasExpectedContent { .. }
             | Property::AllTableHaveExpectedContent { .. } => None,
