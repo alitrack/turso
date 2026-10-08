@@ -2,6 +2,94 @@ use crate::common::TempDatabase;
 use turso_core::{Numeric, StepResult, Value};
 
 #[turso_macros::test(mvcc)]
+fn test_pg_attribute_compression_defaults(db: TempDatabase) {
+    let conn = db.connect_postgres();
+    conn.execute("CREATE TABLE dump_columns (id INTEGER NOT NULL, payload TEXT DEFAULT 'pending')")
+        .unwrap();
+    conn.execute("SELECT set_config('search_path', '', false)")
+        .unwrap();
+    assert_eq!(
+        conn.prepare(
+            "SELECT a.attname, a.attcompression, a.attnotnull, a.atthasdef,
+                pg_catalog.format_type(t.oid, a.atttypmod), a.attlen, a.attbyval,
+                a.attalign, a.attstorage
+            FROM pg_catalog.pg_class c JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid
+            JOIN pg_catalog.pg_type t ON t.oid = a.atttypid
+            WHERE c.relname = 'dump_columns' ORDER BY a.attnum"
+        )
+        .unwrap()
+        .run_collect_rows()
+        .unwrap(),
+        vec![
+            vec![
+                Value::build_text("id"),
+                Value::build_text(""),
+                Value::from_i64(1),
+                Value::from_i64(0),
+                Value::build_text("integer"),
+                Value::from_i64(4),
+                Value::from_i64(1),
+                Value::build_text("i"),
+                Value::build_text("p")
+            ],
+            vec![
+                Value::build_text("payload"),
+                Value::build_text(""),
+                Value::from_i64(0),
+                Value::from_i64(1),
+                Value::build_text("text"),
+                Value::from_i64(-1),
+                Value::from_i64(0),
+                Value::build_text("i"),
+                Value::build_text("x")
+            ],
+        ]
+    );
+}
+
+#[turso_macros::test(mvcc)]
+fn test_pg_index_nulls_are_distinct(db: TempDatabase) {
+    let conn = db.connect_postgres();
+    conn.execute("CREATE TABLE dump_indexes (id INTEGER, payload TEXT)")
+        .unwrap();
+    conn.execute("CREATE UNIQUE INDEX dump_unique ON dump_indexes(payload)")
+        .unwrap();
+    conn.execute("CREATE INDEX dump_plain ON dump_indexes(id)")
+        .unwrap();
+    conn.execute("INSERT INTO dump_indexes VALUES (17, NULL), (2, NULL), (9, 'present')")
+        .unwrap();
+    assert!(conn
+        .execute("INSERT INTO dump_indexes VALUES (3, 'present')")
+        .is_err());
+    assert_eq!(
+        conn.prepare(
+            "SELECT c.relname, i.indisunique, i.indnullsnotdistinct, i.indnatts, i.indkey
+            FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class c ON c.oid = i.indexrelid
+            WHERE c.relname IN ('dump_unique', 'dump_plain') ORDER BY c.relname"
+        )
+        .unwrap()
+        .run_collect_rows()
+        .unwrap(),
+        vec![
+            vec![
+                Value::build_text("dump_plain"),
+                Value::from_i64(0),
+                Value::from_i64(0),
+                Value::from_i64(1),
+                Value::build_text("1")
+            ],
+            vec![
+                Value::build_text("dump_unique"),
+                Value::from_i64(1),
+                Value::from_i64(0),
+                Value::from_i64(1),
+                Value::build_text("2")
+            ],
+        ]
+    );
+}
+
+#[turso_macros::test(mvcc)]
 fn test_empty_physical_catalogs_have_hidden_tableoid(db: TempDatabase) {
     let conn = db.connect_postgres();
     conn.execute("SELECT set_config('search_path', '', false)")
