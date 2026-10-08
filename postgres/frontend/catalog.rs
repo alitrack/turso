@@ -2286,10 +2286,9 @@ impl VirtualTableCursor for PgOptionsCursor {
         self.index = 0;
         self.rows.clear();
         self.input = args[0].clone();
-        let values =
-            turso_core::vdbe::array::array_values_from_any(&self.input).ok_or_else(|| {
-                LimboError::InvalidArgument("pg_options_to_table requires a text array".to_owned())
-            })?;
+        let values = turso_core::array_values_from_any(&self.input).ok_or_else(|| {
+            LimboError::InvalidArgument("pg_options_to_table requires a text array".to_owned())
+        })?;
         for value in values {
             let Value::Text(text) = value else {
                 return Err(LimboError::InvalidArgument(
