@@ -3854,7 +3854,10 @@ pub fn halt(
 
     // Check for immediate foreign key violations.
     // Any immediate violation causes the statement subtransaction to roll back.
+    // A subprogram (trigger or foreign key action) hands its count back to the
+    // statement that runs it, where a later row can still repair it.
     if program.connection.foreign_keys_enabled()
+        && !program.is_subprogram
         && state.get_fk_immediate_violations_during_stmt() > 0
     {
         return Err(
@@ -5944,6 +5947,8 @@ pub fn op_program(
                         .expect("param_idx + 1 should be non-zero");
                     statement.bind_at(param_index, value)?;
                 }
+                statement
+                    .set_fk_immediate_violations(state.get_fk_immediate_violations_during_stmt());
 
                 *state.active_op_state.program() = OpProgramState::Step {
                     is_trigger,
@@ -6040,6 +6045,9 @@ pub fn op_program(
                 // Only cache on clean completion - aborted statements have dirty
                 // internal state and cannot be safely reused.
                 if !subprogram_aborted {
+                    state.set_fk_immediate_violations_during_stmt(
+                        statement.fk_immediate_violations(),
+                    );
                     let pc_key = state.pc as usize;
                     state.subprogram_stmt_cache.insert(pc_key, statement);
                 }
